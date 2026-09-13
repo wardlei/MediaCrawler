@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>医生抖音视频抓取</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #f5f6f8; display: flex; justify-content: center; padding: 40px 16px; }
+  .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.08);
+          width: 100%; max-width: 560px; padding: 28px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: #888; font-size: 13px; margin-bottom: 20px; }
+  label { display: block; font-size: 13px; color: #444; margin: 14px 0 6px; }
+  select, input[type=number] { width: 100%; padding: 10px; border: 1px solid #d0d3d9;
+          border-radius: 8px; font-size: 14px; background: #fff; }
+  .row { display: flex; gap: 12px; margin-top: 20px; }
+  button { flex: 1; padding: 11px 0; border: 0; border-radius: 8px; font-size: 14px; cursor: pointer; }
+  #startBtn { background: #e63946; color: #fff; }
+  #startBtn:disabled { background: #f1a7ad; cursor: not-allowed; }
+  #stopBtn { background: #eceff3; color: #444; flex: 0 0 90px; }
+  .hint { margin-top: 14px; font-size: 12px; color: #999; line-height: 1.7; }
+  .status { margin-top: 18px; font-size: 13px; }
+  .status b.running { color: #e68a00; } .status b.idle { color: #2a9d3f; }
+  #logs { margin-top: 10px; background: #14181f; color: #cde3ff; border-radius: 8px;
+          height: 260px; overflow-y: auto; padding: 10px; font-size: 12px;
+          font-family: Menlo, Consolas, monospace; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+  #logs .err { color: #ff8a80; } #logs .warn { color: #ffd54f; } #logs .ok { color: #8ce99a; }
+  .msg { margin-top: 10px; font-size: 13px; color: #c0392b; min-height: 18px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>医生抖音视频抓取</h1>
+  <div class="sub">账号清单来源：抖音医生账号.csv</div>
+
+  <label for="doctor">医生（姓名（医院））</label>
+  <select id="doctor"><option value="">加载中…</option></select>
+
+  <label for="count">抓取视频数量（0 表示全部）</label>
+  <input type="number" id="count" value="10" min="0" step="1">
+
+  <div class="row">
+    <button id="startBtn">开始抓取</button>
+    <button id="stopBtn">停止</button>
+  </div>
+  <div class="msg" id="msg"></div>
+
+  <div class="status">爬虫状态：<b id="status">idle</b></div>
+  <div id="logs"></div>
+
+  <div class="hint">
+    1. 点击开始后会弹出浏览器窗口，请用抖音 App 扫码登录；登录态会保存，之后免扫码。<br>
+    2. 已抓取过的视频会自动跳过，只抓新视频；数量按新视频计算。<br>
+    3. 视频文件下载需在 config/base_config.py 中开启 ENABLE_GET_MEIDAS = True（默认只存元数据）。
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let pollTimer = null;
+
+async function loadDoctors() {
+  try {
+    const resp = await fetch('/api/doctors');
+    const data = await resp.json();
+    const select = $('doctor');
+    select.innerHTML = '';
+    for (const d of data.doctors) {
+      const opt = document.createElement('option');
+      opt.value = d.name;
+      opt.textContent = d.hospital ? `${d.name}（${d.hospital}）` : d.name;
+      select.appendChild(opt);
+    }
+  } catch (e) {
+    $('msg').textContent = '医生清单加载失败：' + e.message;
+  }
+}
+
+async function startCrawl() {
+  const doctorName = $('doctor').value;
+  const videoCount = parseInt($('count').value, 10);
+  if (!doctorName) { $('msg').textContent = '请先选择医生'; return; }
+  if (Number.isNaN(videoCount) || videoCount < 0) { $('msg').textContent = '数量需为不小于 0 的整数'; return; }
+  $('msg').textContent = '';
+  $('startBtn').disabled = true;
+  try {
+    const resp = await fetch('/api/doctors/crawl', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doctor_name: doctorName, video_count: videoCount }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) { $('msg').textContent = data.detail || '启动失败'; return; }
+    if (!pollTimer) pollTimer = setInterval(poll, 2000);
+    poll();
+  } catch (e) {
+    $('msg').textContent = '请求失败：' + e.message;
+  } finally {
+    $('startBtn').disabled = false;
+  }
+}
+
+async function stopCrawl() {
+  await fetch('/api/crawler/stop', { method: 'POST' });
+  poll();
+}
+
+function renderLogs(logs) {
+  const box = $('logs');
+  box.innerHTML = logs.map(l => {
+    const cls = l.level === 'error' ? 'err' : (l.level === 'warning' ? 'warn' : (l.level === 'success' ? 'ok' : ''));
+    return `<div class="${cls}">[${l.timestamp}] ${escapeHtml(l.message)}</div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function poll() {
+  try {
+    const [statusResp, logsResp] = await Promise.all([
+      fetch('/api/crawler/status'),
+      fetch('/api/crawler/logs?limit=100'),
+    ]);
+    const status = await statusResp.json();
+    const el = $('status');
+    el.textContent = status.status;
+    el.className = status.status;
+    renderLogs((await logsResp.json()).logs);
+  } catch (e) { /* 服务未就绪时忽略 */ }
+}
+
+$('startBtn').addEventListener('click', startCrawl);
+$('stopBtn').addEventListener('click', stopCrawl);
+loadDoctors();
+pollTimer = setInterval(poll, 3000);
+poll();
+</script>
+</body>
+</html>

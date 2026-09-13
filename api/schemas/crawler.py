@@ -75,6 +75,7 @@ class CrawlerStartRequest(BaseModel):
     cookies: str = ""
     headless: bool = False
     max_notes_count: Optional[int] = Field(default=None, ge=1, le=MAX_API_LIMIT_COUNT)
+    max_creator_notes_count: Optional[int] = Field(default=None, ge=0, le=MAX_API_LIMIT_COUNT)  # creator 模式每个账号抓取的新作品数量，0 表示全部
     max_comments_count: Optional[int] = Field(default=None, ge=1, le=MAX_API_LIMIT_COUNT)
 
 
