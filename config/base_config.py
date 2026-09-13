@@ -101,6 +101,9 @@ START_PAGE = 1
 # Control the number of crawled videos/posts
 CRAWLER_MAX_NOTES_COUNT = 15
 
+# Control the number of crawled videos/posts per creator in creator mode, 0 means crawl all
+CRAWLER_MAX_CREATOR_NOTES_COUNT = 0
+
 # Controlling the number of concurrent crawlers
 MAX_CONCURRENCY_NUM = 1
 

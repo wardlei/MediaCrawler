@@ -329,17 +329,25 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
         }
         return await self.get(uri, params)
 
-    async def get_all_user_aweme_posts(self, sec_user_id: str, callback: Optional[Callable] = None):
+    async def get_all_user_aweme_posts(self, sec_user_id: str, callback: Optional[Callable] = None, max_count: int = 0):
+        """
+        获取用户作品列表，max_count <= 0 表示抓取全部，> 0 表示只抓最新 max_count 条
+        """
         posts_has_more = 1
         max_cursor = ""
         result = []
         while posts_has_more == 1:
+            if max_count > 0 and len(result) >= max_count:
+                break
             aweme_post_res = await self.get_user_aweme_posts(sec_user_id, max_cursor)
             posts_has_more = aweme_post_res.get("has_more", 0)
             max_cursor = aweme_post_res.get("max_cursor")
             aweme_list = aweme_post_res.get("aweme_list") if aweme_post_res.get("aweme_list") else []
+            if max_count > 0:
+                # 在回调前截断，保证最后一批不会超出 max_count
+                aweme_list = aweme_list[: max_count - len(result)]
             utils.logger.info(f"[DouYinClient.get_all_user_aweme_posts] get sec_user_id:{sec_user_id} video len : {len(aweme_list)}")
-            if callback:
+            if callback and aweme_list:
                 await callback(aweme_list)
             result.extend(aweme_list)
         return result
