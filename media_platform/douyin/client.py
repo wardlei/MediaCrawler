@@ -21,7 +21,7 @@ import asyncio
 import copy
 import json
 import urllib.parse
-from typing import TYPE_CHECKING, Any, Callable, Dict, Union, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Set, Union, Optional
 
 import httpx
 from playwright.async_api import BrowserContext
@@ -329,9 +329,12 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
         }
         return await self.get(uri, params)
 
-    async def get_all_user_aweme_posts(self, sec_user_id: str, callback: Optional[Callable] = None, max_count: int = 0):
+    async def get_all_user_aweme_posts(self, sec_user_id: str, callback: Optional[Callable] = None, max_count: int = 0, skip_ids: Optional[Set[str]] = None):
         """
-        获取用户作品列表，max_count <= 0 表示抓取全部，> 0 表示只抓最新 max_count 条
+        获取用户作品列表。
+        - max_count <= 0 表示抓取全部，> 0 表示只抓最新 max_count 条新作品
+        - skip_ids 提供增量抓取：命中集合的作品不回调也不计数；
+          整页都是旧作品时视为已到达上次抓取边界，提前停止翻页
         """
         posts_has_more = 1
         max_cursor = ""
@@ -343,6 +346,8 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
             posts_has_more = aweme_post_res.get("has_more", 0)
             max_cursor = aweme_post_res.get("max_cursor")
             aweme_list = aweme_post_res.get("aweme_list") if aweme_post_res.get("aweme_list") else []
+            if skip_ids is not None:
+                aweme_list = [item for item in aweme_list if item.get("aweme_id") not in skip_ids]
             if max_count > 0:
                 # 在回调前截断，保证最后一批不会超出 max_count
                 aweme_list = aweme_list[: max_count - len(result)]
@@ -350,6 +355,8 @@ class DouYinClient(AbstractApiClient, ProxyRefreshMixin):
             if callback and aweme_list:
                 await callback(aweme_list)
             result.extend(aweme_list)
+            if skip_ids is not None and not aweme_list:
+                break
         return result
 
     async def get_aweme_media(self, url: str) -> Union[bytes, None]:
