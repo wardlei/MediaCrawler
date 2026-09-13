@@ -76,11 +76,10 @@ CDP_HEADLESS = False
 BROWSER_LAUNCH_TIMEOUT = 60
 
 # 是否连接用户已打开的浏览器，而不是启动新的浏览器
-# 开启后，程序会连接一个已经启用了远程调试的浏览器
-# 用户需要在 Chrome 中开启远程调试：chrome://inspect/#remote-debugging
-# 或者使用命令行参数启动 Chrome：--remote-debugging-port=9222
-# 这种方式反检测效果最好，因为直接使用用户真实浏览器的所有 Cookie、扩展和浏览历史
-CDP_CONNECT_EXISTING = True
+# 注意：Chrome 136+ 已禁止在默认用户配置目录下开启远程调试端口，
+# 因此默认关闭，由工程自动检测本机 Chrome/Edge 并以独立 profile 拉起：
+# 登录态保存在 browser_data/cdp_dy_user_data_dir，调试端口自动挑选，抓取结束自动关闭
+CDP_CONNECT_EXISTING = False
 
 # 程序结束时是否自动关闭浏览器
 # 设置为 False 可以保持浏览器运行，方便调试
@@ -108,7 +107,7 @@ CRAWLER_MAX_CREATOR_NOTES_COUNT = 0
 MAX_CONCURRENCY_NUM = 1
 
 # Whether to enable crawling media mode (including image or video resources), crawling media is not enabled by default
-ENABLE_GET_MEIDAS = False
+ENABLE_GET_MEIDAS = True
 
 # Whether to enable comment crawling mode. Comment crawling is enabled by default.
 ENABLE_GET_COMMENTS = True
