@@ -117,3 +117,43 @@ async def test_cmd_arg_writes_crawler_max_creator_notes_count():
         assert config.CRAWLER_MAX_CREATOR_NOTES_COUNT == 20
     finally:
         config.CRAWLER_MAX_CREATOR_NOTES_COUNT = original
+
+
+def _page(aweme_ids, has_more, next_cursor):
+    return {
+        "has_more": has_more,
+        "max_cursor": next_cursor,
+        "aweme_list": [{"aweme_id": aweme_id} for aweme_id in aweme_ids],
+    }
+
+
+@pytest.mark.asyncio
+async def test_skip_ids_stops_when_full_page_already_crawled():
+    pages = {
+        "": _page(["old-1", "old-2"], 1, "10"),
+        "10": _page(["new-1"], 0, "10"),
+    }
+    cursors = []
+    client = _build_client(pages, cursors)
+
+    result = await client.get_all_user_aweme_posts("sec_uid", skip_ids={"old-1", "old-2"})
+
+    assert result == []
+    assert cursors == [""]  # 整页都是旧作品，视为已到上次抓取边界，不再翻页
+
+
+@pytest.mark.asyncio
+async def test_skip_ids_with_max_count_counts_new_items_only():
+    pages = {
+        "": _page(["1", "2"], 1, "10"),
+        "10": _page(["3", "4"], 1, "20"),
+        "20": _page(["5", "6"], 0, "20"),
+    }
+    skip_ids = {"1", "3", "5"}  # 每页各有一条旧作品
+    cursors = []
+    client = _build_client(pages, cursors)
+
+    result = await client.get_all_user_aweme_posts("sec_uid", max_count=2, skip_ids=skip_ids)
+
+    assert [post["aweme_id"] for post in result] == ["2", "4"]  # 数量按新作品计
+    assert cursors == ["", "10"]
